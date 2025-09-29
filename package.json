@@ -1,0 +1,19 @@
+{
+    "name": "puppeteer-telegram-bot",
+    "version": "1.0.0",
+    "description": "A Node.js bot using Puppeteer and Telegram Bot API",
+    "main": "index.js",
+    "scripts": {
+        "start": "node index.js",
+        "build": "npm install"
+    },
+    "author": "",
+    "license": "MIT",
+    "dependencies": {
+        "node-telegram-bot-api": "^0.66.0",
+        "puppeteer": "^22.0.0"
+    },
+    "engines": {
+        "node": "21.x"
+    }
+}
