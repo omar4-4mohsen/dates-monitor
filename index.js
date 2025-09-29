@@ -5,20 +5,15 @@ const fs = require('fs');
 const express = require('express');
 const delay = ms => new Promise(res => setTimeout(res, ms));
 
-// --- 1. CONFIGURATION & ENVIRONMENT VARIABLES ---
+// --- 1. CONFIGURATION (HARDCODED) ---
 
-// Get port from environment or default (Required for hosting)
-const PORT = process.env.PORT || 8080;
+// ⚠️ WARNING: REPLACE THESE PLACEHOLDERS WITH YOUR ACTUAL VALUES
+const telegramToken = '7044372335:AAFotpWDVLTEUHpw1d8pkvoG_UQoXqJxy68'; // <-- REPLACE THIS WITH YOUR REAL TOKEN
+const ADMIN_CHAT_ID = 7674719048; // <-- REPLACE THIS WITH YOUR REAL NUMERIC CHAT ID
 
-// Read critical secrets from environment variables (MUST BE SET IN BACK4APP DASHBOARD)
-const telegramToken = process.env.TELEGRAM_TOKEN;
-// Use a reasonable default for safety if env var is missing during testing, but rely on the check below.
-const ADMIN_CHAT_ID = parseInt(process.env.ADMIN_CHAT_ID, 10);
-
-if (!telegramToken || isNaN(ADMIN_CHAT_ID)) {
-    console.error("FATAL: TELEGRAM_TOKEN or ADMIN_CHAT_ID environment variables are not set correctly. Exiting.");
-    process.exit(1);
-}
+// Configuration settings (previously environment variables, now hardcoded)
+const PORT = 8080; // Required for Back4App health checks
+const PUPPETEER_EXECUTABLE_PATH = '/usr/bin/chromium-browser'; // Path inside the Docker container
 
 const CONFIG = {
     // Operational Timing (in milliseconds)
@@ -54,7 +49,6 @@ bot.on('polling_error', (error) => {
     console.error('Polling error (Bot auto-retries most issues):', error.message || error);
 });
 
-// Load chat IDs from file (best effort, as container storage is often ephemeral)
 if (fs.existsSync(CONFIG.CHAT_IDS_FILE)) {
     try {
         const fileIds = JSON.parse(fs.readFileSync(CONFIG.CHAT_IDS_FILE, 'utf8'));
@@ -70,7 +64,6 @@ function saveChatIds() {
     fs.writeFileSync(CONFIG.CHAT_IDS_FILE, JSON.stringify(uniqueIds, null, 2));
 }
 
-// Handle new subscribers
 bot.on('message', (msg) => {
     const chatId = msg.chat.id;
     if (msg.text === '/start' || !telegramChatIds.includes(chatId)) {
@@ -81,7 +74,6 @@ bot.on('message', (msg) => {
     }
 });
 
-// Status Command Handler
 bot.onText(/\/status/, (msg) => {
     const chatId = msg.chat.id;
     const intervalSec = (CONFIG.CHECK_INTERVAL_MS / 1000).toFixed(0);
@@ -94,8 +86,6 @@ bot.onText(/\/status/, (msg) => {
 
     bot.sendMessage(chatId, statusMessage, { parse_mode: 'Markdown' });
 });
-
-// Telegram Helper Functions (sendToAll, sendPhotoToAll remain unchanged)
 
 async function sendToAll(message, options = {}) {
     for (const id of telegramChatIds) {
@@ -124,7 +114,7 @@ async function sendPhotoToAll(photoBuffer, options = {}) {
 
 // --------------------------------------------------------------------------------
 
-// --- 4. Puppeteer Automation Helpers (Unchanged from your original robust code) ---
+// --- 3. Puppeteer Automation Helpers (Unchanged) ---
 
 async function waitForElementWithRetries(page, selector, timeout) {
     for (let i = 0; i < CONFIG.MAX_RETRIES; i++) {
@@ -207,7 +197,7 @@ async function clickNextButton(page) {
 
 // --------------------------------------------------------------------------------
 
-// --- 5. Main Automation Logic ---
+// --- 4. Main Automation Logic ---
 
 async function startBooking(browser) {
     const page = await browser.newPage();
@@ -221,7 +211,6 @@ async function startBooking(browser) {
             timeout: CONFIG.NAV_TIMEOUT_MS
         });
 
-        // 1. Select the correct office/service type (LOOKING FOR "master")
         await waitForElementWithRetries(page, CONFIG.SELECTORS.SERVICE_DROPDOWN, CONFIG.NAV_TIMEOUT_MS);
 
         const masterValue = await page.evaluate((selector) => {
@@ -233,19 +222,16 @@ async function startBooking(browser) {
         if (!masterValue) throw new Error('No matching dropdown option found for service type (expected "master").');
         await page.select(CONFIG.SELECTORS.SERVICE_DROPDOWN, masterValue);
 
-        // 2. Click 'Next' 3 times, handling errors
         for (let i = 0; i < 3; i++) {
             const ok = await clickNextButton(page);
             if (!ok) throw new Error(`Next button not found at step ${i + 1}. Aborting.`);
             await loopUntilNoUnfortunately(page);
         }
 
-        // 3. Check for Appointment Availability (The Alarm Trigger)
         await waitForElementWithRetries(page, CONFIG.SELECTORS.RADIO_BUTTONS, CONFIG.NAV_TIMEOUT_MS);
         const radios = await page.$$(CONFIG.SELECTORS.RADIO_BUTTONS);
 
         if (radios.length > 0) {
-            // --- SUCCESS: APPOINTMENT SLOTS ARE VISIBLE ---
             console.log('!!! APPOINTMENT FOUND !!! Direct access not possible (Static URL).');
 
             await sendToAll(`🚨 **APPOINTMENT AVAILABLE!** 📅
@@ -280,10 +266,9 @@ async function runMonitor() {
     try {
         console.log('\n--- Initializing Browser ---');
         browser = await puppeteer.launch({
-            // These arguments are essential for running in a Docker/Alpine container
             headless: 'new',
-            // Uses PUPPETEER_EXECUTABLE_PATH set in the Dockerfile or Environment Vars
-            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+            // Uses hardcoded path
+            executablePath: PUPPETEER_EXECUTABLE_PATH, 
             args: [
                 '--no-sandbox',
                 '--disable-gpu',
@@ -307,7 +292,6 @@ async function runMonitor() {
             await startBooking(browser);
             checkCounter++;
         } catch (error) {
-            // Error Handling
             if (error.message.includes('Appointment found')) {
                 console.log('✅ ALERT SENT. Waiting for next cycle.');
             } else if (error.message.includes('No appointment slots currently available')) {
@@ -319,16 +303,15 @@ async function runMonitor() {
                 checkCounter++;
             }
         } finally {
-            // --- PERIODIC BROWSER RESTART CHECK ---
             if (checkCounter > 0 && (checkCounter % CONFIG.MAX_CHECKS_PER_CYCLE === 0)) {
                 console.log(`\n--- Reached ${CONFIG.MAX_CHECKS_PER_CYCLE} checks. Restarting browser for cleanup... ---`);
 
                 await browser.close().catch(err => console.error('Error during scheduled browser close:', err.message));
-
+                
                 // Re-launch browser
                 browser = await puppeteer.launch({
                     headless: 'new',
-                    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+                    executablePath: PUPPETEER_EXECUTABLE_PATH,
                     args: [
                         '--no-sandbox',
                         '--disable-gpu',
@@ -339,7 +322,6 @@ async function runMonitor() {
                 checkCounter = 0;
             }
 
-            // --- DELAY ---
             const checkDuration = ((Date.now() - checkStartTime) / 1000).toFixed(2);
             const delaySec = (CONFIG.CHECK_INTERVAL_MS / 1000).toFixed(0);
 
@@ -349,17 +331,14 @@ async function runMonitor() {
     }
 }
 
-// --- 6. Web Server & Execution ---
+// --- 5. Web Server & Execution ---
 
-// Set up a minimal Express server for hosting health checks (Required for Back4App)
 const app = express();
 
-// Simple endpoint for Back4App to verify the app is running
 app.get('/', (req, res) => {
     res.status(200).send("Appointments Monitor is running and serving Telegram updates.");
 });
 
-// Start the Express server
 app.listen(PORT, () => {
     console.log(`Web server listening for health checks on port ${PORT}`);
 });
