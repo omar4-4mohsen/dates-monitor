@@ -2,31 +2,31 @@ const puppeteer = require('puppeteer');
 const TelegramBot = require('node-telegram-bot-api');
 const path = require('path');
 const fs = require('fs');
-const express = require('express'); // <-- ADDED: Needed for Back4App health checks
+const express = require('express');
 const delay = ms => new Promise(res => setTimeout(res, ms));
 
 // --- 1. CONFIGURATION & ENVIRONMENT VARIABLES ---
 
-// Get port from environment or default to 8080 (required for hosting)
+// Get port from environment or default (Required for hosting)
 const PORT = process.env.PORT || 8080;
 
 // Read critical secrets from environment variables (MUST BE SET IN BACK4APP DASHBOARD)
 const telegramToken = process.env.TELEGRAM_TOKEN;
+// Use a reasonable default for safety if env var is missing during testing, but rely on the check below.
 const ADMIN_CHAT_ID = parseInt(process.env.ADMIN_CHAT_ID, 10);
 
 if (!telegramToken || isNaN(ADMIN_CHAT_ID)) {
     console.error("FATAL: TELEGRAM_TOKEN or ADMIN_CHAT_ID environment variables are not set correctly. Exiting.");
-    // In a container environment, this exit will likely trigger a restart.
     process.exit(1);
 }
 
 const CONFIG = {
     // Operational Timing (in milliseconds)
-    CHECK_INTERVAL_MS: 3000,           // 3 seconds wait between checks
-    NAV_TIMEOUT_MS: 30000,             // 30 seconds max wait for a page load (Increased for stability)
-    MAX_CHECKS_PER_CYCLE: 500000,      // Restart the entire browser after 500000 checks
-    MAX_RETRIES: 3,                    // Max attempts to find a critical element if it fails
-    RETRY_DELAY_MS: 1000,              // Delay between element search retries
+    CHECK_INTERVAL_MS: 3000,
+    NAV_TIMEOUT_MS: 30000,
+    MAX_CHECKS_PER_CYCLE: 500000,
+    MAX_RETRIES: 3,
+    RETRY_DELAY_MS: 1000,
 
     // Website-Specific Elements
     NEXT_BUTTON_VALUES: ['Next', 'التالى'],
@@ -40,7 +40,6 @@ const CONFIG = {
         SUBMIT_BUTTON: 'input[type="submit"]',
     },
 
-    // File Paths (Note: File saving may be unreliable in ephemeral containers)
     CHAT_IDS_FILE: path.resolve(__dirname, 'chat_ids.json'),
 };
 
@@ -52,7 +51,6 @@ const bot = new TelegramBot(telegramToken, { polling: true });
 // --- 2. Telegram Bot Setup & File I/O ---
 
 bot.on('polling_error', (error) => {
-    // This allows the bot to recover from temporary connection issues
     console.error('Polling error (Bot auto-retries most issues):', error.message || error);
 });
 
@@ -60,7 +58,6 @@ bot.on('polling_error', (error) => {
 if (fs.existsSync(CONFIG.CHAT_IDS_FILE)) {
     try {
         const fileIds = JSON.parse(fs.readFileSync(CONFIG.CHAT_IDS_FILE, 'utf8'));
-        // Filter out any non-numeric or invalid IDs
         const validFileIds = fileIds.filter(id => !isNaN(parseInt(id, 10)));
         telegramChatIds = Array.from(new Set([ADMIN_CHAT_ID, ...validFileIds]));
     } catch (err) {
@@ -69,7 +66,6 @@ if (fs.existsSync(CONFIG.CHAT_IDS_FILE)) {
 }
 
 function saveChatIds() {
-    // Note: If running on a stateless container, this file will be lost on restart.
     const uniqueIds = Array.from(new Set(telegramChatIds));
     fs.writeFileSync(CONFIG.CHAT_IDS_FILE, JSON.stringify(uniqueIds, null, 2));
 }
@@ -99,7 +95,7 @@ bot.onText(/\/status/, (msg) => {
     bot.sendMessage(chatId, statusMessage, { parse_mode: 'Markdown' });
 });
 
-// --- 3. Telegram Helper Functions ---
+// Telegram Helper Functions (sendToAll, sendPhotoToAll remain unchanged)
 
 async function sendToAll(message, options = {}) {
     for (const id of telegramChatIds) {
@@ -125,10 +121,10 @@ async function sendPhotoToAll(photoBuffer, options = {}) {
     }
 }
 
+
 // --------------------------------------------------------------------------------
 
-// --- 4. Puppeteer Automation Helpers ---
-// (These remain largely unchanged from your original, robust implementation)
+// --- 4. Puppeteer Automation Helpers (Unchanged from your original robust code) ---
 
 async function waitForElementWithRetries(page, selector, timeout) {
     for (let i = 0; i < CONFIG.MAX_RETRIES; i++) {
@@ -211,7 +207,7 @@ async function clickNextButton(page) {
 
 // --------------------------------------------------------------------------------
 
-// --- 5. Main Automation Logic (Unchanged) ---
+// --- 5. Main Automation Logic ---
 
 async function startBooking(browser) {
     const page = await browser.newPage();
@@ -262,7 +258,6 @@ async function startBooking(browser) {
             const screenshotBuffer = await page.screenshot({ fullPage: true });
             await sendPhotoToAll(screenshotBuffer, { caption: 'Screenshot confirms slots are open!' });
 
-            // Throw to log and restart the loop quickly
             throw new Error('Appointment found. Alert sent.');
         } else {
             throw new Error('No appointment slots currently available.');
@@ -287,7 +282,8 @@ async function runMonitor() {
         browser = await puppeteer.launch({
             // These arguments are essential for running in a Docker/Alpine container
             headless: 'new',
-            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined, // Uses ENV from Dockerfile
+            // Uses PUPPETEER_EXECUTABLE_PATH set in the Dockerfile or Environment Vars
+            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
             args: [
                 '--no-sandbox',
                 '--disable-gpu',
@@ -299,7 +295,7 @@ async function runMonitor() {
     } catch (e) {
         console.error('FATAL: Could not launch browser. Monitoring loop halted.', e);
         await bot.sendMessage(ADMIN_CHAT_ID, `❌ FATAL ERROR: Cannot launch browser. Monitoring halted. Check Dockerfile and dependencies.`);
-        return; // Halt the monitoring loop
+        return;
     }
 
     // --- CONTINUOUS CHECK LOOP ---
@@ -328,6 +324,7 @@ async function runMonitor() {
                 console.log(`\n--- Reached ${CONFIG.MAX_CHECKS_PER_CYCLE} checks. Restarting browser for cleanup... ---`);
 
                 await browser.close().catch(err => console.error('Error during scheduled browser close:', err.message));
+
                 // Re-launch browser
                 browser = await puppeteer.launch({
                     headless: 'new',
@@ -369,5 +366,3 @@ app.listen(PORT, () => {
 
 // Start the core monitoring loop concurrently
 runMonitor();
-
-// --------------------------------------------------------------------------------

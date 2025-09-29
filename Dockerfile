@@ -1,9 +1,7 @@
-# 1. Base Image: Use a stable Node.js image based on Alpine Linux for a smaller size.
+# Use a lightweight but capable base image (Node.js 20 on Alpine)
 FROM node:20-alpine
 
-# 2. Install Puppeteer Dependencies (CRITICAL STEP)
-# Puppeteer needs Chromium and several system libraries to run in a headless environment.
-# 'apk add' is the package manager for Alpine.
+# Install necessary system dependencies for Puppeteer (Chromium)
 RUN apk add --no-cache \
     chromium \
     nss \
@@ -14,27 +12,21 @@ RUN apk add --no-cache \
     ttf-freefont \
     ghostscript
 
-# 3. Configure Puppeteer Environment Variable
-# This tells Puppeteer where to find the installed Chromium browser executable.
+# Set Puppeteer's executable path to the installed Chromium
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
-# 4. Set Working Directory
-# All subsequent commands will execute in this directory inside the container.
+# Set the working directory
 WORKDIR /app
 
-# 5. Copy and Install Dependencies
-# Copy only the package files first to leverage Docker's build cache.
+# Copy package files and install dependencies
 COPY package*.json ./
 RUN npm install
 
-# 6. Copy Application Code
-# Copy the rest of your application code (including index.js, Dockerfile, etc.)
+# Copy your application code
 COPY . .
 
-# 7. Expose Port (Optional but good practice)
-# While your app is a background worker, exposing a port is necessary for Back4App's deployment service.
+# Expose the port used by the Express server
 EXPOSE 8080
 
-# 8. Define the Startup Command
-# This command runs when the container starts. It executes the 'start' script defined in your package.json.
+# The command to start your application
 CMD ["npm", "start"]

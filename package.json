@@ -1,20 +1,16 @@
 {
-    "name": "puppeteer-telegram-bot",
-    "version": "1.0.0",
-    "description": "A Node.js bot using Puppeteer and Telegram Bot API",
-    "main": "index.js",
-    "scripts": {
-        "start": "node index.js",
-        "build": "npm install"
-    },
-    "author": "",
-    "license": "MIT",
-    "dependencies": {
-        "node-telegram-bot-api": "^0.66.0",
-        "puppeteer": "^22.0.0",
-        "express": "^4.18.2"
-    },
-    "engines": {
-        "node": "21.x"
-    }
+  "name": "appointments-monitor-b4a",
+  "version": "1.0.0",
+  "description": "Puppeteer-based appointment monitor hosted on Back4App.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "puppeteer": "^22.0.0",
+    "node-telegram-bot-api": "^0.64.0",
+    "express": "^4.18.2" 
+  },
+  "author": "",
+  "license": "ISC"
 }
